@@ -1,5 +1,5 @@
 const CLIENT_ID = 'e920c2eded02446098daac6cef398aa3'
-const REDIRECT_URI = 'http://127.0.0.1:5173/callback'
+const REDIRECT_URI = 'http://127.0.0.1:8888/callback'
 
 const SCOPES = [
   'playlist-read-private',

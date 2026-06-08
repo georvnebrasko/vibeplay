@@ -1,7 +1,35 @@
 const { app, BrowserWindow } = require('electron')
+const path = require('path')
+const http = require('http')
+
+let mainWindow
+
+function createCallbackServer() {
+  const server = http.createServer((req, res) => {
+    const url = new URL(req.url, 'http://127.0.0.1:8888')
+
+    if (url.pathname === '/callback') {
+      const code = url.searchParams.get('code')
+      const indexPath = path.join(__dirname, 'dist', 'index.html')
+
+      if (code && mainWindow) {
+        mainWindow.loadFile(indexPath, {
+          query: {
+            code,
+          },
+        })
+      }
+
+      res.writeHead(200, { 'Content-Type': 'text/html' })
+      res.end('<h2>Spotify connected. You can return to VibePlay.</h2>')
+    }
+  })
+
+  server.listen(8888, '127.0.0.1')
+}
 
 function createWindow() {
-  const window = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1000,
     height: 800,
     minWidth: 800,
@@ -9,10 +37,15 @@ function createWindow() {
     backgroundColor: '#111111',
   })
 
-  window.loadURL('http://127.0.0.1:5173')
+  const indexPath = path.join(__dirname, 'dist', 'index.html')
+
+  mainWindow.loadFile(indexPath)
 }
 
-app.whenReady().then(createWindow)
+app.whenReady().then(() => {
+  createCallbackServer()
+  createWindow()
+})
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
