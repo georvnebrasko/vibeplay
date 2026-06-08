@@ -22,6 +22,7 @@ VibePlay — desktop-приложение для поиска и запуска 
 
 # Состав проекта
 
+```text
 VibePlay/
 ├── src/
 │   ├── assets/            # Иконки и изображения
@@ -34,6 +35,7 @@ VibePlay/
 ├── README.md             # Документация проекта
 ├── dist/                 # Готовые сборки приложения
 └── node_modules/         # Зависимости проекта
+```
 
 ---
 
@@ -41,31 +43,43 @@ VibePlay/
 
 ## 1. Клонировать репозиторий
 
+```bash
 bash git clone https://github.com/georvnebrasko/vibeplay.git 
+```
 
 ## 2. Перейти в папку проекта
 
+```bash
 bash cd vibeplay 
+```
 
 ## 3. Установить зависимости
 
-bash npm install 
+```bash
+bash npm install
+```
 
 ## 4. Запустить web-версию
 
-bash npm run dev 
+```bash
+bash npm run dev
+```
 
 ---
 
 ## 5. Запустить desktop-версию
 
-bash npm run electron 
+```bash
+bash npm run electron
+``` 
 
 ---
 
 ## 6. Собрать приложение
 
-bash npm run dist 
+```bash
+bash npm run dist
+```
 
 После сборки приложение появится в папке:
 
@@ -77,12 +91,12 @@ text dist/
 
 Основные файлы проекта:
 
-- App.jsx — основной интерфейс приложения
-- spotify.js — логика работы со Spotify API
-- App.css — стилизация интерфейса
-- electron.cjs — запуск desktop-приложения
-- assets/ — изображения и иконки
-- package.json — зависимости и настройки проекта
+- `App.jsx` — основной интерфейс приложения
+- `spotify.js` — логика работы со Spotify API
+- `App.css` — стилизация интерфейса
+- `electron.cjs` — запуск desktop-приложения
+- `assets/` — изображения и иконки
+- `package.json` — зависимости и настройки проекта
 
 ---
 
