@@ -1,16 +1,90 @@
-# React + Vite
+# VibePlay
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+VibePlay — desktop-приложение для поиска и запуска Spotify-плейлистов по настроению, атмосфере или любому текстовому вайбу.
 
-Currently, two official plugins are available:
+## Описание
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Проект представляет собой desktop-приложение для macOS, которое использует Spotify API для поиска плейлистов по пользовательскому запросу и позволяет сразу запускать найденную музыку.
 
-## React Compiler
+Приложение позволяет быстро находить музыку через запросы вроде:
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- night drive
+- villain arc gym
+- walking alone in Tokyo rain at 3am
+- sad but hopeful
+- cyberpunk vibe
 
-## Expanding the ESLint configuration
+Пользователь вводит любой вайб, получает список плейлистов и запускает их напрямую через Spotify.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Состав проекта
+
+text VibePlay/ ├── src/                   # Исходный код React приложения │   ├── assets/            # Иконки и изображения │   ├── App.jsx            # Основной интерфейс │   ├── App.css            # Стили приложения │   └── spotify.js         # Работа с Spotify API ├── electron.cjs          # Electron desktop wrapper ├── dist/                 # Сборки приложения ├── node_modules/         # Зависимости ├── package.json          # Настройки проекта ├── .gitignore            # Игнорируемые файлы └── README.md             # Документация 
+
+## Как запустить
+
+### 1. Клонировать репозиторий
+
+bash git clone https://github.com/georvnebrasko/vibeplay.git 
+
+### 2. Перейти в папку проекта
+
+bash cd vibeplay 
+
+### 3. Установить зависимости
+
+bash npm install 
+
+### 4. Запустить приложение
+
+Web версия:
+
+bash npm run dev 
+
+Desktop версия:
+
+bash npm run electron 
+
+### 5. Собрать приложение
+
+bash npm run dist 
+
+После сборки готовое приложение появится в папке:
+
+text dist/ 
+
+## Используемые технологии
+
+- React
+- Vite
+- Electron
+- Spotify Web API
+- OAuth PKCE
+- JavaScript
+
+## Основной функционал
+
+Сейчас реализовано:
+
+- Spotify OAuth авторизация
+- Поиск плейлистов по вайбу
+- Воспроизведение найденных плейлистов
+- Desktop приложение для macOS
+- Кастомная иконка приложения
+- Spotify playback control
+- Поиск атмосферных и сложных запросов
+
+## Планы
+
+Планируется добавить:
+
+- улучшенный UI/UX
+- поддержка большего количества платформ
+- расширенный поиск по вайбам
+- история запросов
+- сохранение любимых вайбов
+- дополнительные режимы поиска
+- публичный релиз
+
+## Уточнение
+
+Для работы playback-функций требуется Spotify Premium.
