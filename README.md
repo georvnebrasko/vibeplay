@@ -10,13 +10,6 @@ VibePlay — desktop-приложение для поиска и запуска 
 
 Приложение позволяет искать музыку по свободным запросам и быстро запускать найденные плейлисты.
 
-Примеры запросов:
-
-- night drive
-- villain arc gym
-- sad but hopeful
-- cyberpunk vibes
-- walking alone in Tokyo rain at 3am
 
 ---
 
