@@ -1,8 +1,9 @@
-const { app, BrowserWindow } = require('electron')
+const { app, BrowserWindow, globalShortcut } = require('electron')
 const path = require('path')
 const http = require('http')
 
 let mainWindow
+let zoomLevel = 0
 
 function createCallbackServer() {
   const server = http.createServer((req, res) => {
@@ -45,6 +46,21 @@ function createWindow() {
 app.whenReady().then(() => {
   createCallbackServer()
   createWindow()
+
+  globalShortcut.register('CommandOrControl+=', () => {
+    zoomLevel += 0.5
+    mainWindow.webContents.setZoomLevel(zoomLevel)
+  })
+
+  globalShortcut.register('CommandOrControl+-', () => {
+    zoomLevel -= 0.5
+    mainWindow.webContents.setZoomLevel(zoomLevel)
+  })
+
+  globalShortcut.register('CommandOrControl+0', () => {
+    zoomLevel = 0
+    mainWindow.webContents.setZoomLevel(zoomLevel)
+  })
 })
 
 app.on('window-all-closed', () => {
@@ -57,4 +73,8 @@ app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow()
   }
+})
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll()
 })

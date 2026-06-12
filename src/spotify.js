@@ -144,3 +144,83 @@ export async function playPlaylist(playlistUri) {
     throw new Error(data.error?.message || 'Failed to start playback')
   }
 }
+
+export async function searchSpotifyArchive(query) {
+  const token = localStorage.getItem('spotify_access_token')
+
+  const response = await fetch(
+    `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=album,track,playlist`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  )
+
+  const data = await response.json()
+
+  if (!response.ok) {
+    throw new Error(data.error?.message || 'Archive search failed')
+  }
+
+  const albums = (data.albums?.items || []).map((item) => ({
+    ...item,
+    archiveType: 'album',
+  }))
+
+  const tracks = (data.tracks?.items || []).map((item) => ({
+    ...item,
+    archiveType: 'track',
+  }))
+
+  const playlists = (data.playlists?.items || [])
+    .filter(Boolean)
+    .map((item) => ({
+      ...item,
+      archiveType: 'playlist',
+    }))
+
+  return [...albums, ...tracks, ...playlists]
+}
+
+export async function getAlbumTracks(albumId) {
+  const token = localStorage.getItem('spotify_access_token')
+
+  const response = await fetch(
+    `https://api.spotify.com/v1/albums/${albumId}/tracks`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  )
+
+  const data = await response.json()
+
+  if (!response.ok) {
+    throw new Error(data.error?.message || 'Failed to load album tracks')
+  }
+
+  return data.items || []
+}
+
+export async function getPlaylistItems(playlistId) {
+  const token = localStorage.getItem('spotify_access_token')
+
+  const response = await fetch(
+    `https://api.spotify.com/v1/playlists/${playlistId}/tracks`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  )
+
+  const data = await response.json()
+
+  if (!response.ok) {
+    throw new Error(data.error?.message || 'Failed to load playlist tracks')
+  }
+
+  return data.items?.map((item) => item.track).filter(Boolean) || []
+}
