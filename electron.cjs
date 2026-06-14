@@ -4,29 +4,42 @@ const http = require('http')
 
 let mainWindow
 let zoomLevel = 0
+let callbackServer
 
 function createCallbackServer() {
-  const server = http.createServer((req, res) => {
+  if (callbackServer) return
+
+  callbackServer = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://127.0.0.1:8888')
 
     if (url.pathname === '/callback') {
       const code = url.searchParams.get('code')
+      const state = url.searchParams.get('state')
       const indexPath = path.join(__dirname, 'dist', 'index.html')
 
       if (code && mainWindow) {
         mainWindow.loadFile(indexPath, {
           query: {
             code,
+            state,
           },
         })
       }
 
       res.writeHead(200, { 'Content-Type': 'text/html' })
       res.end('<h2>Spotify connected. You can return to VibePlay.</h2>')
+      return
     }
+
+    res.writeHead(404, { 'Content-Type': 'text/plain' })
+    res.end('Not found')
   })
 
-  server.listen(8888, '127.0.0.1')
+  callbackServer.on('error', (error) => {
+    console.error('Spotify callback server error:', error)
+  })
+
+  callbackServer.listen(8888, '127.0.0.1')
 }
 
 function createWindow() {
@@ -41,6 +54,17 @@ function createWindow() {
   const indexPath = path.join(__dirname, 'dist', 'index.html')
 
   mainWindow.loadFile(indexPath)
+
+  mainWindow.on('closed', () => {
+    mainWindow = null
+  })
+}
+
+function setMainWindowZoom(nextZoomLevel) {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+
+  zoomLevel = nextZoomLevel
+  mainWindow.webContents.setZoomLevel(zoomLevel)
 }
 
 app.whenReady().then(() => {
@@ -48,18 +72,15 @@ app.whenReady().then(() => {
   createWindow()
 
   globalShortcut.register('CommandOrControl+=', () => {
-    zoomLevel += 0.5
-    mainWindow.webContents.setZoomLevel(zoomLevel)
+    setMainWindowZoom(zoomLevel + 0.5)
   })
 
   globalShortcut.register('CommandOrControl+-', () => {
-    zoomLevel -= 0.5
-    mainWindow.webContents.setZoomLevel(zoomLevel)
+    setMainWindowZoom(zoomLevel - 0.5)
   })
 
   globalShortcut.register('CommandOrControl+0', () => {
-    zoomLevel = 0
-    mainWindow.webContents.setZoomLevel(zoomLevel)
+    setMainWindowZoom(0)
   })
 })
 
@@ -77,4 +98,9 @@ app.on('activate', () => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
+
+  if (callbackServer) {
+    callbackServer.close()
+    callbackServer = null
+  }
 })

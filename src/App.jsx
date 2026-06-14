@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import './App.css'
 import {
   getAccessToken,
@@ -11,43 +11,66 @@ import {
   getPlaylistItems,
 } from './spotify'
 
+function readStoredArray(key) {
+  try {
+    const saved = localStorage.getItem(key)
+    const value = saved ? JSON.parse(saved) : []
+
+    return Array.isArray(value) ? value : []
+  } catch (error) {
+    console.error(`Failed to read ${key} from localStorage`, error)
+    localStorage.removeItem(key)
+    return []
+  }
+}
+
+function writeStoredArray(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value))
+  } catch (error) {
+    console.error(`Failed to write ${key} to localStorage`, error)
+  }
+}
+
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [page, setPage] = useState('login')
 
   const [vibe, setVibe] = useState('')
   const [playlists, setPlaylists] = useState([])
+  const [vibeLoading, setVibeLoading] = useState(false)
+  const [vibeError, setVibeError] = useState('')
 
-  const [playedHistory, setPlayedHistory] = useState(() => {
-    const saved = localStorage.getItem('vibeplay_played_history')
-    return saved ? JSON.parse(saved) : []
-  })
+  const [playedHistory, setPlayedHistory] = useState(() =>
+    readStoredArray('vibeplay_played_history')
+  )
 
   const [archiveQuery, setArchiveQuery] = useState('')
   const [archiveResults, setArchiveResults] = useState([])
+  const [archiveLoading, setArchiveLoading] = useState(false)
+  const [archiveError, setArchiveError] = useState('')
 
-  const [archive, setArchive] = useState(() => {
-    const saved = localStorage.getItem('vibeplay_archive')
-    return saved ? JSON.parse(saved) : []
-  })
+  const [archive, setArchive] = useState(() =>
+    readStoredArray('vibeplay_archive')
+  )
 
   const [selectedItem, setSelectedItem] = useState(null)
   const [selectedTracks, setSelectedTracks] = useState([])
+  const [detailsLoading, setDetailsLoading] = useState(false)
+  const [detailsError, setDetailsError] = useState('')
 
   const [editingRatings, setEditingRatings] = useState({})
   const [ratingDrafts, setRatingDrafts] = useState({})
   const [editingTrackRatings, setEditingTrackRatings] = useState({})
   const [trackRatingDrafts, setTrackRatingDrafts] = useState({})
+  const detailsRequestId = useRef(0)
 
   useEffect(() => {
-    localStorage.setItem('vibeplay_archive', JSON.stringify(archive))
+    writeStoredArray('vibeplay_archive', archive)
   }, [archive])
 
   useEffect(() => {
-    localStorage.setItem(
-      'vibeplay_played_history',
-      JSON.stringify(playedHistory)
-    )
+    writeStoredArray('vibeplay_played_history', playedHistory)
   }, [playedHistory])
 
   useEffect(() => {
@@ -68,11 +91,12 @@ function App() {
 
       const params = new URLSearchParams(window.location.search)
       const code = params.get('code')
+      const state = params.get('state')
 
       if (!code) return
 
       try {
-        await getAccessToken(code)
+        await getAccessToken(code, state)
         await getCurrentUser()
 
         setIsLoggedIn(true)
@@ -80,7 +104,7 @@ function App() {
 
         window.history.replaceState({}, document.title, '/')
       } catch (error) {
-        console.log(error)
+        console.error(error)
         setPage('login')
       }
     }
@@ -91,22 +115,34 @@ function App() {
   async function handleVibeSearch() {
     if (!vibe.trim()) return
 
+    setVibeLoading(true)
+    setVibeError('')
+
     try {
       const results = await searchPlaylists(vibe)
       setPlaylists(results.filter(Boolean))
     } catch (error) {
-      console.log(error)
+      console.error(error)
+      setVibeError(error.message || 'Failed to search playlists')
+    } finally {
+      setVibeLoading(false)
     }
   }
 
   async function handleArchiveSearch() {
     if (!archiveQuery.trim()) return
 
+    setArchiveLoading(true)
+    setArchiveError('')
+
     try {
       const results = await searchSpotifyArchive(archiveQuery)
       setArchiveResults(results.filter(Boolean))
     } catch (error) {
-      console.log(error)
+      console.error(error)
+      setArchiveError(error.message || 'Failed to search Spotify')
+    } finally {
+      setArchiveLoading(false)
     }
   }
 
@@ -182,22 +218,23 @@ function App() {
       trackRatings: {},
     }
 
-    setArchive([archiveItem, ...archive])
+    setArchive((currentArchive) => [archiveItem, ...currentArchive])
     setArchiveResults([])
     setArchiveQuery('')
+    setArchiveError('')
   }
 
   function updateItemRating(id, type, rating) {
-    setArchive(
-      archive.map((item) =>
+    setArchive((currentArchive) =>
+      currentArchive.map((item) =>
         item.id === id && item.type === type ? { ...item, rating } : item
       )
     )
   }
 
   function updateTrackRating(itemId, trackId, rating) {
-    setArchive(
-      archive.map((item) =>
+    setArchive((currentArchive) =>
+      currentArchive.map((item) =>
         item.id === itemId
           ? {
               ...item,
@@ -224,26 +261,48 @@ function App() {
   }
 
   function removeFromArchive(id, type) {
-    setArchive(archive.filter((item) => !(item.id === id && item.type === type)))
+    setArchive((currentArchive) =>
+      currentArchive.filter((item) => !(item.id === id && item.type === type))
+    )
   }
 
   async function openArchiveItem(item) {
+    const requestId = detailsRequestId.current + 1
+    detailsRequestId.current = requestId
+
     setSelectedItem(item)
     setSelectedTracks([])
+    setDetailsError('')
     setPage('details')
 
     try {
       if (item.type === 'album') {
+        setDetailsLoading(true)
         const tracks = await getAlbumTracks(item.id)
-        setSelectedTracks(tracks)
+
+        if (detailsRequestId.current === requestId) {
+          setSelectedTracks(tracks)
+        }
       }
 
       if (item.type === 'playlist') {
+        setDetailsLoading(true)
         const tracks = await getPlaylistItems(item.id)
-        setSelectedTracks(tracks)
+
+        if (detailsRequestId.current === requestId) {
+          setSelectedTracks(tracks)
+        }
       }
     } catch (error) {
-      console.log(error)
+      console.error(error)
+
+      if (detailsRequestId.current === requestId) {
+        setDetailsError(error.message || 'Failed to load tracks')
+      }
+    } finally {
+      if (detailsRequestId.current === requestId) {
+        setDetailsLoading(false)
+      }
     }
   }
 
@@ -347,11 +406,18 @@ function App() {
               />
             </div>
 
+            {vibeError && <p className="status-message error">{vibeError}</p>}
+            {vibeLoading && <p className="status-message">Searching Spotify...</p>}
+
             <div className="list">
               {playlists.map((playlist) => (
                 <div className="list-item" key={playlist.id}>
                   {playlist.images?.[0]?.url && (
-                    <img src={playlist.images[0].url} alt={playlist.name} />
+                    <img
+                      src={playlist.images[0].url}
+                      alt={playlist.name}
+                      loading="lazy"
+                    />
                   )}
 
                   <div>
@@ -361,12 +427,14 @@ function App() {
 
                   <button
                     className="circle-button"
+                    disabled={vibeLoading}
                     onClick={async () => {
                       try {
                         await playPlaylist(playlist.uri)
                         savePlayedPlaylist(playlist)
                       } catch (error) {
-                        console.log(error)
+                        console.error(error)
+                        setVibeError(error.message || 'Failed to start playback')
                       }
                     }}
                   >
@@ -384,7 +452,7 @@ function App() {
                   {playedHistory.map((item) => (
                     <div className="recent-item" key={item.id}>
                       {item.image && (
-                        <img src={item.image} alt={item.name} />
+                        <img src={item.image} alt={item.name} loading="lazy" />
                       )}
 
                       <div>
@@ -398,7 +466,8 @@ function App() {
                           try {
                             await playPlaylist(item.uri)
                           } catch (error) {
-                            console.log(error)
+                            console.error(error)
+                            setVibeError(error.message || 'Failed to start playback')
                           }
                         }}
                       >
@@ -439,6 +508,7 @@ function App() {
                     onClick={() => {
                       setArchiveQuery('')
                       setArchiveResults([])
+                      setArchiveError('')
                     }}
                   >
                     ×
@@ -446,7 +516,15 @@ function App() {
                 )}
               </div>
 
-              {archiveResults.length > 0 && (
+              {archiveError && (
+                <p className="status-message error">{archiveError}</p>
+              )}
+
+              {archiveLoading && (
+                <p className="status-message">Searching Spotify...</p>
+              )}
+
+              {archiveResults.length > 0 && !archiveLoading && (
                 <div className="search-dropdown">
                   {archiveResults.map((item) => (
                     <div
@@ -454,7 +532,7 @@ function App() {
                       key={`${item.archiveType}-${item.id}`}
                     >
                       {getImage(item) && (
-                        <img src={getImage(item)} alt={item.name} />
+                        <img src={getImage(item)} alt={item.name} loading="lazy" />
                       )}
 
                       <div>
@@ -487,6 +565,7 @@ function App() {
                     <img
                       src={item.image}
                       alt={item.name}
+                      loading="lazy"
                       onClick={() => openArchiveItem(item)}
                     />
                   )}
@@ -571,7 +650,11 @@ function App() {
 
             <header className="details-header">
               {selectedItem.image && (
-                <img src={selectedItem.image} alt={selectedItem.name} />
+                <img
+                  src={selectedItem.image}
+                  alt={selectedItem.name}
+                  loading="lazy"
+                />
               )}
 
               <div>
@@ -585,6 +668,14 @@ function App() {
             </header>
 
             <div className="track-list">
+              {detailsError && (
+                <p className="status-message error">{detailsError}</p>
+              )}
+
+              {detailsLoading && (
+                <p className="status-message">Loading tracks...</p>
+              )}
+
               {selectedItem.type === 'track' && (
                 <p className="empty-text">
                   This is a single track. Use the archive card to rate it.
