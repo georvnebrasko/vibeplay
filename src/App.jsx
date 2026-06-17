@@ -5,12 +5,51 @@ import {
   getCurrentUser,
   loginSpotify,
   searchPlaylists,
-  playPlaylist,
+  playSpotifyItem,
   searchSpotifyArchive,
-  getWeeklyNewReleases,
+  getNewThisWeek,
   getAlbumTracks,
   getPlaylistItems,
 } from './spotify'
+
+const NEW_THIS_WEEK_CACHE_KEY = 'vibeplay_new_this_week_cache'
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000
+
+function readNewThisWeekCache() {
+  try {
+    const saved = localStorage.getItem(NEW_THIS_WEEK_CACHE_KEY)
+    const cache = saved ? JSON.parse(saved) : null
+
+    if (
+      !cache ||
+      !Array.isArray(cache.albums) ||
+      !Array.isArray(cache.tracks) ||
+      !Number.isFinite(cache.cacheUpdatedAt)
+    ) {
+      return null
+    }
+
+    return cache
+  } catch (error) {
+    console.error('Failed to read new this week cache', error)
+    localStorage.removeItem(NEW_THIS_WEEK_CACHE_KEY)
+    return null
+  }
+}
+
+function writeNewThisWeekCache(data) {
+  try {
+    localStorage.setItem(
+      NEW_THIS_WEEK_CACHE_KEY,
+      JSON.stringify({
+        ...data,
+        cacheUpdatedAt: Date.now(),
+      })
+    )
+  } catch (error) {
+    console.error('Failed to write new this week cache', error)
+  }
+}
 
 function readStoredArray(key) {
   try {
@@ -55,7 +94,7 @@ function App() {
     readStoredArray('vibeplay_archive')
   )
 
-  const [newReleases, setNewReleases] = useState([])
+  const [newThisWeek, setNewThisWeek] = useState({ albums: [], tracks: [] })
   const [newReleasesLoading, setNewReleasesLoading] = useState(false)
   const [newReleasesError, setNewReleasesError] = useState('')
 
@@ -151,13 +190,26 @@ function App() {
     }
   }
 
-  const loadNewReleases = useCallback(async () => {
+  const loadNewThisWeek = useCallback(async (forceRefresh = false) => {
     setNewReleasesLoading(true)
     setNewReleasesError('')
 
     try {
-      const results = await getWeeklyNewReleases()
-      setNewReleases(results)
+      const cache = readNewThisWeekCache()
+      const isFreshCache =
+        cache && Date.now() - cache.cacheUpdatedAt < WEEK_MS
+
+      if (isFreshCache && !forceRefresh) {
+        setNewThisWeek({
+          albums: cache.albums,
+          tracks: cache.tracks,
+        })
+        return
+      }
+
+      const results = await getNewThisWeek()
+      setNewThisWeek(results)
+      writeNewThisWeekCache(results)
     } catch (error) {
       console.error(error)
       setNewReleasesError(error.message || 'Failed to load new releases')
@@ -165,6 +217,17 @@ function App() {
       setNewReleasesLoading(false)
     }
   }, [])
+
+  async function handleNewThisWeekPlay(item) {
+    setNewReleasesError('')
+
+    try {
+      await playSpotifyItem(item)
+    } catch (error) {
+      console.error(error)
+      setNewReleasesError(error.message || 'Failed to start playback')
+    }
+  }
 
   function getRatingClass(rating) {
     const value = Number(rating)
@@ -301,8 +364,12 @@ function App() {
   function openNewReleases() {
     setPage('new-releases')
 
-    if (newReleases.length === 0 && !newReleasesLoading) {
-      loadNewReleases()
+    if (
+      newThisWeek.albums.length === 0 &&
+      newThisWeek.tracks.length === 0 &&
+      !newReleasesLoading
+    ) {
+      loadNewThisWeek()
     }
   }
 
@@ -484,7 +551,10 @@ function App() {
                     disabled={vibeLoading}
                     onClick={async () => {
                       try {
-                        await playPlaylist(playlist.uri)
+                        await playSpotifyItem({
+                          ...playlist,
+                          archiveType: 'playlist',
+                        })
                         savePlayedPlaylist(playlist)
                       } catch (error) {
                         console.error(error)
@@ -518,7 +588,10 @@ function App() {
                         className="circle-button"
                         onClick={async () => {
                           try {
-                            await playPlaylist(item.uri)
+                            await playSpotifyItem({
+                              archiveType: 'playlist',
+                              uri: item.uri,
+                            })
                           } catch (error) {
                             console.error(error)
                             setVibeError(error.message || 'Failed to start playback')
@@ -549,74 +622,113 @@ function App() {
               <button
                 className="refresh-button"
                 disabled={newReleasesLoading}
-                onClick={loadNewReleases}
+                onClick={() => loadNewThisWeek(true)}
               >
                 Refresh
               </button>
             </header>
 
             {newReleasesError && (
-              <p className="status-message error">{newReleasesError}</p>
+              <p className="recommendations-note error">{newReleasesError}</p>
             )}
 
             {newReleasesLoading && (
-              <p className="status-message">Loading new releases...</p>
+              <p className="recommendations-note">Loading releases...</p>
             )}
 
             {!newReleasesLoading &&
               !newReleasesError &&
-              newReleases.length === 0 && (
+              newThisWeek.albums.length === 0 &&
+              newThisWeek.tracks.length === 0 && (
                 <p className="empty-text">No new releases found.</p>
               )}
 
-            <div className="recommendations-grid">
-              {newReleases.map((release) => (
-                <article
-                  className="recommendation-card"
-                  key={`${release.archiveType}-${release.id}`}
-                >
-                  {getImage(release) ? (
-                    <img
-                      src={getImage(release)}
-                      alt={release.name}
-                      loading="lazy"
-                    />
-                  ) : (
-                    <div className="release-cover-placeholder">No cover</div>
-                  )}
+            {newThisWeek.albums.length > 0 && (
+              <section className="recommendations-section">
+                <h2>New Albums</h2>
 
-                  <div className="recommendation-card-content">
-                    <small>
-                      {getReleaseTypeLabel(release.album_type)} •{' '}
-                      {formatReleaseDate(release.release_date)}
-                    </small>
-
-                    <h3>{release.name}</h3>
-                    <p>{getSubtitle(release)}</p>
-                  </div>
-
-                  <div className="recommendation-card-footer">
-                    <span>{release.total_tracks || 0} tracks</span>
-
-                    <button
-                      className={
-                        isInArchive(release)
-                          ? 'add-button added'
-                          : 'add-button'
-                      }
-                      onClick={() => addToArchive(release)}
-                      aria-label={
-                        isInArchive(release)
-                          ? 'Already in archive'
-                          : 'Add to archive'
-                      }
+                <div className="recommendations-grid">
+                  {newThisWeek.albums.map((release) => (
+                    <article
+                      className="recommendation-card"
+                      key={`${release.archiveType}-${release.id}`}
                     >
-                      {isInArchive(release) ? '✓' : '+'}
-                    </button>
-                  </div>
-                </article>
-              ))}
-            </div>
+                      {getImage(release) ? (
+                        <img
+                          src={getImage(release)}
+                          alt={release.name}
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="release-cover-placeholder">No cover</div>
+                      )}
+
+                      <div className="recommendation-card-content">
+                        <small>
+                          {getReleaseTypeLabel(release.album_type)} •{' '}
+                          {formatReleaseDate(release.release_date)}
+                        </small>
+
+                        <h3>{release.name}</h3>
+                        <p>{getSubtitle(release)}</p>
+                      </div>
+
+                      <div className="recommendation-card-actions">
+                        <button onClick={() => handleNewThisWeekPlay(release)}>
+                          Play
+                        </button>
+
+                        <button
+                          className={isInArchive(release) ? 'added' : ''}
+                          onClick={() => addToArchive(release)}
+                        >
+                          {isInArchive(release) ? 'Added' : 'Add'}
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {newThisWeek.tracks.length > 0 && (
+              <section className="recommendations-section">
+                <h2>New Tracks</h2>
+
+                <div className="new-track-list">
+                  {newThisWeek.tracks.map((track) => (
+                    <div
+                      className="new-track-row"
+                      key={`${track.album.id}-${track.id}`}
+                    >
+                      {getImage(track) && (
+                        <img src={getImage(track)} alt={track.album.name} />
+                      )}
+
+                      <div>
+                        <h3>{track.name}</h3>
+                        <p>
+                          {getSubtitle(track)} • {track.album.name}
+                        </p>
+                      </div>
+
+                      <div className="new-track-actions">
+                        <button onClick={() => handleNewThisWeekPlay(track)}>
+                          Play
+                        </button>
+
+                        <button
+                          className={isInArchive(track) ? 'added' : ''}
+                          onClick={() => addToArchive(track)}
+                        >
+                          {isInArchive(track) ? 'Added' : 'Add'}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
           </section>
         )}
 

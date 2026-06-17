@@ -228,15 +228,105 @@ export async function searchPlaylists(vibe) {
   return playlists.filter(Boolean)
 }
 
+function getItemType(item) {
+  if (item.archiveType || item.type) {
+    return item.archiveType || item.type
+  }
+
+  return item.uri?.split(':')[1] || ''
+}
+
+function getSpotifyUrl(item) {
+  if (item.external_urls?.spotify) {
+    return item.external_urls.spotify
+  }
+
+  const [, type, id] = item.uri?.split(':') || []
+
+  if (!type || !id) return ''
+
+  return `https://open.spotify.com/${type}/${id}`
+}
+
+function openSpotifyFallback(item) {
+  const url = getSpotifyUrl(item)
+
+  if (!url) {
+    console.log('No Spotify fallback URL for item', item)
+    return
+  }
+
+  try {
+    window.open(url, '_blank', 'noopener,noreferrer')
+  } catch (error) {
+    console.log('Failed to open Spotify fallback URL', error)
+  }
+}
+
+async function getPlaybackDeviceId() {
+  const data = await spotifyRequest('/me/player/devices')
+  const devices = data.devices || []
+  const device = devices.find((item) => item.is_active) || devices[0]
+
+  return device?.id || ''
+}
+
+function isNoActiveDeviceError(error) {
+  return String(error?.message || '')
+    .toLowerCase()
+    .includes('no active device')
+}
+
+export async function playSpotifyItem(item) {
+  const type = getItemType(item)
+  const deviceId = await getPlaybackDeviceId()
+
+  if (!deviceId) {
+    openSpotifyFallback(item)
+    return
+  }
+
+  const body =
+    type === 'track'
+      ? { uris: [item.uri] }
+      : { context_uri: item.uri }
+
+  try {
+    await spotifyRequest(`/me/player/play?device_id=${encodeURIComponent(deviceId)}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    })
+  } catch (error) {
+    if (isNoActiveDeviceError(error)) {
+      openSpotifyFallback(item)
+      return
+    }
+
+    throw error
+  }
+}
+
 export async function playPlaylist(playlistUri) {
-  await spotifyRequest('/me/player/play', {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      context_uri: playlistUri,
-    }),
+  await playSpotifyItem({
+    archiveType: 'playlist',
+    uri: playlistUri,
+  })
+}
+
+export async function playAlbum(albumUri) {
+  await playSpotifyItem({
+    archiveType: 'album',
+    uri: albumUri,
+  })
+}
+
+export async function playTrack(trackUri) {
+  await playSpotifyItem({
+    archiveType: 'track',
+    uri: trackUri,
   })
 }
 
@@ -265,11 +355,39 @@ export async function searchSpotifyArchive(query) {
   return [...albums, ...tracks, ...playlists]
 }
 
-export async function getWeeklyNewReleases() {
+function isReleasedInLastWeek(album) {
+  if (album.release_date_precision !== 'day') return false
+
+  const releaseDate = new Date(`${album.release_date}T00:00:00`)
+
+  if (Number.isNaN(releaseDate.getTime())) return false
+
+  const weekAgo = new Date()
+  weekAgo.setDate(weekAgo.getDate() - 7)
+
+  return releaseDate >= weekAgo
+}
+
+function normalizeAlbum(album) {
+  return {
+    ...album,
+    archiveType: 'album',
+  }
+}
+
+function normalizeAlbumTrack(track, album) {
+  return {
+    ...track,
+    album,
+    archiveType: 'track',
+  }
+}
+
+export async function getNewThisWeek() {
   let data
 
   try {
-    data = await spotifyRequest('/browse/new-releases?limit=24')
+    data = await spotifyRequest('/browse/new-releases?limit=50')
   } catch (error) {
     if (error.message !== 'Forbidden') {
       throw error
@@ -278,13 +396,25 @@ export async function getWeeklyNewReleases() {
     data = await spotifyRequest('/search?q=tag%3Anew&type=album')
   }
 
-  return (data.albums?.items || [])
+  const releases = (data.albums?.items || [])
     .filter(Boolean)
-    .slice(0, 20)
-    .map((item) => ({
-      ...item,
-      archiveType: 'album',
-    }))
+    .map(normalizeAlbum)
+
+  const weeklyAlbums = releases.filter(isReleasedInLastWeek)
+  const albums = (weeklyAlbums.length >= 6 ? weeklyAlbums : releases).slice(0, 12)
+
+  const trackGroups = await Promise.all(
+    albums.slice(0, 8).map(async (album) => {
+      const tracks = await getAlbumTracks(album.id)
+
+      return tracks.map((track) => normalizeAlbumTrack(track, album))
+    })
+  )
+
+  return {
+    albums,
+    tracks: trackGroups.flat().slice(0, 24),
+  }
 }
 
 export async function getAlbumTracks(albumId) {
