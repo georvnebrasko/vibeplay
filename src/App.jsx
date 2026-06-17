@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import './App.css'
 import {
   getAccessToken,
@@ -7,6 +7,7 @@ import {
   searchPlaylists,
   playPlaylist,
   searchSpotifyArchive,
+  getWeeklyNewReleases,
   getAlbumTracks,
   getPlaylistItems,
 } from './spotify'
@@ -53,6 +54,10 @@ function App() {
   const [archive, setArchive] = useState(() =>
     readStoredArray('vibeplay_archive')
   )
+
+  const [newReleases, setNewReleases] = useState([])
+  const [newReleasesLoading, setNewReleasesLoading] = useState(false)
+  const [newReleasesError, setNewReleasesError] = useState('')
 
   const [selectedItem, setSelectedItem] = useState(null)
   const [selectedTracks, setSelectedTracks] = useState([])
@@ -146,6 +151,21 @@ function App() {
     }
   }
 
+  const loadNewReleases = useCallback(async () => {
+    setNewReleasesLoading(true)
+    setNewReleasesError('')
+
+    try {
+      const results = await getWeeklyNewReleases()
+      setNewReleases(results)
+    } catch (error) {
+      console.error(error)
+      setNewReleasesError(error.message || 'Failed to load new releases')
+    } finally {
+      setNewReleasesLoading(false)
+    }
+  }, [])
+
   function getRatingClass(rating) {
     const value = Number(rating)
 
@@ -173,6 +193,18 @@ function App() {
     if (type === 'album') return 'Album'
     if (type === 'playlist') return 'Playlist'
     return type
+  }
+
+  function getReleaseTypeLabel(type) {
+    if (type === 'single') return 'Single'
+    if (type === 'compilation') return 'Compilation'
+    return 'Album'
+  }
+
+  function formatReleaseDate(date) {
+    if (!date) return 'Release date unknown'
+
+    return date
   }
 
   function isInArchive(item) {
@@ -266,6 +298,14 @@ function App() {
     )
   }
 
+  function openNewReleases() {
+    setPage('new-releases')
+
+    if (newReleases.length === 0 && !newReleasesLoading) {
+      loadNewReleases()
+    }
+  }
+
   async function openArchiveItem(item) {
     const requestId = detailsRequestId.current + 1
     detailsRequestId.current = requestId
@@ -349,6 +389,15 @@ function App() {
 
           <button
             className={
+              page === 'new-releases' ? 'nav-button active' : 'nav-button'
+            }
+            onClick={openNewReleases}
+          >
+            New This Week
+          </button>
+
+          <button
+            className={
               page === 'archive' || page === 'details'
                 ? 'nav-button active'
                 : 'nav-button'
@@ -375,6 +424,11 @@ function App() {
               <button onClick={() => setPage('vibe')}>
                 <span>Vibe Search</span>
                 <small>Find Spotify playlists by mood, scene or aesthetic.</small>
+              </button>
+
+              <button onClick={openNewReleases}>
+                <span>New This Week</span>
+                <small>Browse fresh Spotify releases and save the best finds.</small>
               </button>
 
               <button onClick={() => setPage('archive')}>
@@ -478,6 +532,91 @@ function App() {
                 </div>
               </section>
             )}
+          </section>
+        )}
+
+        {page === 'new-releases' && (
+          <section className="page">
+            <header className="page-header recommendations-header">
+              <div>
+                <h1>New This Week</h1>
+                <p>
+                  Fresh Spotify releases worth checking out. Save strong finds
+                  to your archive and rate them later.
+                </p>
+              </div>
+
+              <button
+                className="refresh-button"
+                disabled={newReleasesLoading}
+                onClick={loadNewReleases}
+              >
+                Refresh
+              </button>
+            </header>
+
+            {newReleasesError && (
+              <p className="status-message error">{newReleasesError}</p>
+            )}
+
+            {newReleasesLoading && (
+              <p className="status-message">Loading new releases...</p>
+            )}
+
+            {!newReleasesLoading &&
+              !newReleasesError &&
+              newReleases.length === 0 && (
+                <p className="empty-text">No new releases found.</p>
+              )}
+
+            <div className="recommendations-grid">
+              {newReleases.map((release) => (
+                <article
+                  className="recommendation-card"
+                  key={`${release.archiveType}-${release.id}`}
+                >
+                  {getImage(release) ? (
+                    <img
+                      src={getImage(release)}
+                      alt={release.name}
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="release-cover-placeholder">No cover</div>
+                  )}
+
+                  <div className="recommendation-card-content">
+                    <small>
+                      {getReleaseTypeLabel(release.album_type)} •{' '}
+                      {formatReleaseDate(release.release_date)}
+                    </small>
+
+                    <h3>{release.name}</h3>
+                    <p>{getSubtitle(release)}</p>
+                  </div>
+
+                  <div className="recommendation-card-footer">
+                    <span>{release.total_tracks || 0} tracks</span>
+
+                    <button
+                      className={
+                        isInArchive(release)
+                          ? 'add-button added'
+                          : 'add-button'
+                      }
+                      onClick={() => addToArchive(release)}
+                      aria-label={
+                        isInArchive(release)
+                          ? 'Already in archive'
+                          : 'Add to archive'
+                      }
+                    >
+                      {isInArchive(release) ? '✓' : '+'}
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
           </section>
         )}
 

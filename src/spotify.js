@@ -265,6 +265,28 @@ export async function searchSpotifyArchive(query) {
   return [...albums, ...tracks, ...playlists]
 }
 
+export async function getWeeklyNewReleases() {
+  let data
+
+  try {
+    data = await spotifyRequest('/browse/new-releases?limit=24')
+  } catch (error) {
+    if (error.message !== 'Forbidden') {
+      throw error
+    }
+
+    data = await spotifyRequest('/search?q=tag%3Anew&type=album')
+  }
+
+  return (data.albums?.items || [])
+    .filter(Boolean)
+    .slice(0, 20)
+    .map((item) => ({
+      ...item,
+      archiveType: 'album',
+    }))
+}
+
 export async function getAlbumTracks(albumId) {
   const data = await spotifyRequest(`/albums/${albumId}/tracks?limit=50`)
 
