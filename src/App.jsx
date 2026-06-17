@@ -10,9 +10,12 @@ import {
   getNewThisWeek,
   getAlbumTracks,
   getPlaylistItems,
+  getRequiredScopeSignature,
 } from './spotify'
 
 const NEW_THIS_WEEK_CACHE_KEY = 'vibeplay_new_this_week_cache'
+const NEW_THIS_WEEK_MARKET = 'US'
+const NEW_THIS_WEEK_CACHE_VERSION = 'personalized-new-releases-v1'
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000
 
 function readNewThisWeekCache() {
@@ -22,6 +25,8 @@ function readNewThisWeekCache() {
 
     if (
       !cache ||
+      cache.cacheVersion !== NEW_THIS_WEEK_CACHE_VERSION ||
+      cache.market !== NEW_THIS_WEEK_MARKET ||
       !Array.isArray(cache.albums) ||
       !Array.isArray(cache.tracks) ||
       !Number.isFinite(cache.cacheUpdatedAt)
@@ -43,6 +48,8 @@ function writeNewThisWeekCache(data) {
       NEW_THIS_WEEK_CACHE_KEY,
       JSON.stringify({
         ...data,
+        cacheVersion: NEW_THIS_WEEK_CACHE_VERSION,
+        market: NEW_THIS_WEEK_MARKET,
         cacheUpdatedAt: Date.now(),
       })
     )
@@ -120,8 +127,18 @@ function App() {
   useEffect(() => {
     async function connectSpotify() {
       const savedToken = localStorage.getItem('spotify_access_token')
+      const savedScopeSignature = localStorage.getItem('spotify_scope_signature')
+      const requiredScopeSignature = getRequiredScopeSignature()
 
       if (savedToken) {
+        if (savedScopeSignature !== requiredScopeSignature) {
+          localStorage.removeItem('spotify_access_token')
+          localStorage.removeItem('spotify_refresh_token')
+          localStorage.removeItem('spotify_token_expires_at')
+          setPage('login')
+          return
+        }
+
         try {
           await getCurrentUser()
           setIsLoggedIn(true)
@@ -296,8 +313,6 @@ function App() {
   }
 
   function addToArchive(item) {
-    if (isInArchive(item)) return
-
     const archiveItem = {
       id: item.id,
       type: item.archiveType,
@@ -313,7 +328,14 @@ function App() {
       trackRatings: {},
     }
 
-    setArchive((currentArchive) => [archiveItem, ...currentArchive])
+    setArchive((currentArchive) => {
+      const alreadyArchived = currentArchive.some(
+        (currentItem) =>
+          currentItem.id === archiveItem.id && currentItem.type === archiveItem.type
+      )
+
+      return alreadyArchived ? currentArchive : [archiveItem, ...currentArchive]
+    })
     setArchiveResults([])
     setArchiveQuery('')
     setArchiveError('')
@@ -460,7 +482,7 @@ function App() {
             }
             onClick={openNewReleases}
           >
-            New This Week
+            Personalized New This Week
           </button>
 
           <button
@@ -494,8 +516,8 @@ function App() {
               </button>
 
               <button onClick={openNewReleases}>
-                <span>New This Week</span>
-                <small>Browse fresh Spotify releases and save the best finds.</small>
+                <span>Personalized New This Week</span>
+                <small>Fresh releases matched to your Spotify taste.</small>
               </button>
 
               <button onClick={() => setPage('archive')}>
@@ -612,10 +634,10 @@ function App() {
           <section className="page">
             <header className="page-header recommendations-header">
               <div>
-                <h1>New This Week</h1>
+                <h1>Personalized New This Week</h1>
                 <p>
-                  Fresh Spotify releases worth checking out. Save strong finds
-                  to your archive and rate them later.
+                  Fresh albums and tracks matched to artists, genres and music
+                  already in your Spotify library.
                 </p>
               </div>
 
@@ -645,7 +667,7 @@ function App() {
 
             {newThisWeek.albums.length > 0 && (
               <section className="recommendations-section">
-                <h2>New Albums</h2>
+                <h2>Personalized New Albums</h2>
 
                 <div className="recommendations-grid">
                   {newThisWeek.albums.map((release) => (
@@ -671,6 +693,11 @@ function App() {
 
                         <h3>{release.name}</h3>
                         <p>{getSubtitle(release)}</p>
+                        {release.recommendationReason && (
+                          <p className="recommendation-reason">
+                            {release.recommendationReason}
+                          </p>
+                        )}
                       </div>
 
                       <div className="recommendation-card-actions">
@@ -693,7 +720,7 @@ function App() {
 
             {newThisWeek.tracks.length > 0 && (
               <section className="recommendations-section">
-                <h2>New Tracks</h2>
+                <h2>Personalized New Tracks</h2>
 
                 <div className="new-track-list">
                   {newThisWeek.tracks.map((track) => (
@@ -710,6 +737,11 @@ function App() {
                         <p>
                           {getSubtitle(track)} • {track.album.name}
                         </p>
+                        {track.recommendationReason && (
+                          <p className="recommendation-reason">
+                            {track.recommendationReason}
+                          </p>
+                        )}
                       </div>
 
                       <div className="new-track-actions">

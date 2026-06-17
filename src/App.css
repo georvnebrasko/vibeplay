@@ -457,6 +457,13 @@ button:disabled {
   font-size: 13px;
 }
 
+.recommendation-card-content .recommendation-reason,
+.new-track-row .recommendation-reason {
+  color: #73d895;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .recommendation-card-actions,
 .new-track-actions {
   display: flex;
